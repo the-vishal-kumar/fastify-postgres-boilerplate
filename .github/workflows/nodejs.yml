@@ -1,0 +1,87 @@
+name: Boilerplate-CI
+
+on: [push]
+
+jobs:  
+  build:
+
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ucreate
+          POSTGRES_DB: nodejs_boilerplate_test
+        ports:
+        - 5436:5432
+
+    strategy:
+      matrix:
+        node-version: [12.x]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+    
+    - name: Check rejected commits
+      env:
+        REVIEWEE_URL: https://api.reviewee.it
+        COMMITS_CHECK_ENDPOINT: repository/roche_ventana-api/haveRejectedCommits
+        COMMITS_CHECK_INDICATOR: \"success\":true
+      run: wget ${REVIEWEE_URL}/${COMMITS_CHECK_ENDPOINT} -q -O - | grep -q  ${COMMITS_CHECK_INDICATOR}
+      
+    - name: npm install, build
+      run: |
+        npm ci
+        npm run build --if-present        
+      env:
+        CI: true
+
+    - name: Check code quality
+      run: npm run lint
+
+    - name: Deploy to heroku dev
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+      run: git push --force https://heroku:$HEROKU_API_KEY@git.heroku.com/$HEROKU_APP_NAME.git HEAD:refs/heads/master
+  
+    - name: Install newman
+      run: sudo npm install -g newman
+
+    - name: API tests
+      env:        
+        POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+        POSTMAN_COLLECTION_ID: ${{ secrets.POSTMAN_COLLECTION_ID }}
+        POSTMAN_ENV_ID: ${{ secrets.POSTMAN_ENV_ID }}
+      run: newman run https://api.getpostman.com/collections/$POSTMAN_COLLECTION_ID?apikey=$POSTMAN_API_KEY -e https://api.getpostman.com/environments/$POSTMAN_ENV_ID?apikey=$POSTMAN_API_KEY
+
+    - name: Test
+      run: npm test
+
+    - name: Deploy to heroku
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}  
+      run: heroku pipelines:promote -r dev-fastify-postgres-boilerplate --to uat-fastify-postgres-boilerplate
+    - name: Slack notification
+      if: success()
+      env:
+        WEBHOOK_URL: ${{ secrets.SLACK_BOT_TOKEN }}
+        MESSAGE: Build succeed
+        USERNAME: ucreate
+        CHANNEL: general
+      uses: svikramjeet/git-actions@master
+    - name: Slack notification
+      if: failure()
+      env:
+        WEBHOOK_URL: ${{ secrets.SLACK_BOT_TOKEN }}
+        MESSAGE: Build failure
+        USERNAME: ucreate
+        CHANNEL: general
+      uses: svikramjeet/git-actions@master  

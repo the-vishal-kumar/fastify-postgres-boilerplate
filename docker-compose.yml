@@ -1,0 +1,77 @@
+version: "3"
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PORT: 8080
+    volumes:
+      - .:/usr/src/app
+    ports:
+      - 8080:8080
+    depends_on:
+      - pg
+      - redis
+    environment:
+      DATABASE_URL: postgres://postgres:ucreate@192.38.1.2/nodejs_boilerplate
+      DEBUG: 'true'
+    networks:
+      testing_net_boiler_plate:
+        ipv4_address: 192.38.1.1
+
+  pg:
+    image: postgres:latest
+    ports:
+    - 5435:5432
+    volumes:
+      - db_data:/usr/lib/postgres
+    environment:
+      POSTGRES_PASSWORD: ucreate
+      POSTGRES_DB: nodejs_boilerplate
+    networks:
+      testing_net_boiler_plate:
+        ipv4_address: 192.38.1.2
+  pg-test:
+    image: postgres:latest
+    ports:
+    - 5436:5432
+    volumes:
+      - db_test_data:/usr/lib/postgres
+    environment:
+      POSTGRES_PASSWORD: ucreate
+      POSTGRES_DB: nodejs_boilerplate_test
+    networks:
+      testing_net_boiler_plate:
+        ipv4_address: 192.38.1.5
+  redis:
+    image: redis:6.0.1
+    ports:
+    - 6379:6379
+    volumes:
+      - redis_data:/usr/lib/redis
+    networks:
+      testing_net_boiler_plate:
+        ipv4_address: 192.38.1.3
+  redis-test:
+    image: redis:6.0.1
+    ports:
+    - 6381:6379
+    volumes:
+      - redis_test_data:/usr/lib/redis
+    networks:
+      testing_net_boiler_plate:
+        ipv4_address: 192.38.1.4
+            
+
+volumes:
+  db_data: {}
+  db_test_data: {}
+  redis_data: {}
+  redis_test_data: {}
+networks:
+  testing_net_boiler_plate:
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.38.0.0/16

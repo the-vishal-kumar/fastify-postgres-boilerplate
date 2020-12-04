@@ -1,0 +1,75 @@
+{
+  "name": "fastify-postgres-boilerplate",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "cross-env-shell NODE_ENV=test \"sequelize db:migrate:undo:all && sequelize db:migrate && npm run spec\"",
+    "test:debug": "cross-env-shell NODE_ENV=test \"sequelize db:migrate:undo:all && sequelize db:migrate && npm run spec -- --inspect\"",
+    "test:sync": "cross-env NODE_ENV=test SYNC_DATABASE=1 npm run spec -- --inspect",
+    "spec": "cross-env-shell NODE_ENV=test  \"mocha --recursive --timeout 25000\"",
+    "start": "node .",
+    "db:migrate": "sequelize db:migrate",
+    "db:unmigrate": "sequelize db:migrate:undo",
+    "lint": "eslint {src,test}/**/*.js *.js",
+    "queue:process": "node src/workers/queue-processor.js",
+    "queue:process:watch": "nodemon src/workers/queue-processor.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/the-vishal-kumar/fastify-postgres-boilerplate.git"
+  },
+  "keywords": [
+    "nodejs",
+    "fastify",
+    "postgres",
+    "sequelize",
+    "boilerplate"
+  ],
+  "author": "Vishal Kumar",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/the-vishal-kumar/fastify-postgres-boilerplate/issues"
+  },
+  "homepage": "https://github.com/the-vishal-kumar/fastify-postgres-boilerplate#readme",
+  "engines": {
+    "node": "12.x"
+  },
+  "dependencies": {
+    "acl": "^0.4.11",
+    "acl-mem-regexp": "^0.2.0",
+    "apidoc": "^0.20.0",
+    "aws-sdk": "^2.609.0",
+    "bull": "^3.13.0",
+    "bull-arena": "^2.7.1",
+    "dotenv": "^8.2.0",
+    "fastify": "^3.8.0",
+    "fastify-cors": "^4.1.0",
+    "fastify-rate-limit": "^4.0.3",
+    "fastify-swagger": "^3.5.0",
+    "newrelic": "^7.0.0",
+    "pg": "^7.17.0",
+    "rollbar": "^2.14.4",
+    "sequelize": "^5.21.3",
+    "sequelize-cli": "^5.5.1",
+    "sequelize-log-syntax-colors": "^2.0.0",
+    "sql-formatter": "^2.3.3",
+    "validator": "^13.0.0",
+    "yn": "^4.0.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.2",
+    "eslint": "^6.8.0",
+    "eslint-config-airbnb-base": "^14.0.0",
+    "eslint-config-prettier": "^6.10.0",
+    "eslint-plugin-import": "^2.20.1",
+    "eslint-plugin-no-only-tests": "^2.4.0",
+    "eslint-plugin-prettier": "^3.1.2",
+    "faker": "^4.1.0",
+    "husky": "^4.2.3",
+    "lint-staged": "^10.0.8",
+    "mocha": "^7.1.2",
+    "prettier": "^1.19.1",
+    "sequelize-fixtures": "^1.1.1"
+  }
+}
