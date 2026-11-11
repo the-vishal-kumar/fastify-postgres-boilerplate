@@ -14,7 +14,7 @@ services:
       - pg
       - redis
     environment:
-      DATABASE_URL: postgres://postgres:ucreate@192.38.1.2/nodejs_boilerplate
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@192.38.1.2/nodejs_boilerplate
       DEBUG: 'true'
     networks:
       testing_net_boiler_plate:
@@ -27,7 +27,7 @@ services:
     volumes:
       - db_data:/usr/lib/postgres
     environment:
-      POSTGRES_PASSWORD: ucreate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: nodejs_boilerplate
     networks:
       testing_net_boiler_plate:
@@ -39,7 +39,7 @@ services:
     volumes:
       - db_test_data:/usr/lib/postgres
     environment:
-      POSTGRES_PASSWORD: ucreate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: nodejs_boilerplate_test
     networks:
       testing_net_boiler_plate:
