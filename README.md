@@ -1,9 +1,39 @@
-> **Archived.** Written in 2020 and kept as a record of earlier work. It is no longer maintained and its dependencies are outdated.
->
-> For a current TypeScript setup, see [nodejs-typescript-rest-boilerplate](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate).
+> **Archived (2020).** A Fastify and PostgreSQL boilerplate from December 2020, early in my career. It is kept as a record of where I started. It is not maintained, its dependencies are out of date, and it should not be deployed as-is. For how I structure a Node.js API today, see [nodejs-typescript-rest-boilerplate](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate).
 
-## Nodejs boilerplate
+# fastify-postgres-boilerplate
 
+
+## Security note
+
+Read this before copying any of the code.
+
+- **No authentication.** The user routes are public. `acl-authorization.js` and `with-session.js` exist but no route uses them.
+- **Development wipes the database.** With `NODE_ENV=development` the app runs `sequelize.sync({ force: true })` on start, which drops and recreates all tables.
+- **Public IP range for the Docker network.** `docker-compose.yml` uses `192.38.0.0/16`, which is public address space, not a private range. While the stack runs, traffic to real hosts in that range goes to the containers instead.
+- **Public Cloud Run service.** `cloudbuild.yaml` deploys with `--allow-unauthenticated`.
+
+Fixed during archiving:
+
+- The rate limiter built its SQL by string interpolation of the client address. A single quote in `X-Forwarded-For` broke the query, so the limiter recorded nothing and let every request through. It now uses bound parameters.
+- Seed data contained real people's work email addresses. They are replaced with `example.com` addresses.
+- The database password was hard-coded in `docker-compose.yml`. It now comes from `POSTGRES_PASSWORD`, defaulting to `postgres` for local use.
+- The GitHub Actions workflow failed on every push and targeted services this repo does not own. It is removed.
+
+## Known issues
+
+- `GET /users/getUserByEmail` validates the `email` query parameter but never passes it on, so every call returns 500.
+- The rate limit table uses `Source` alone as its primary key, so one client address can only hold a counter for one route at a time.
+
+## What I'd do differently today
+
+- **Migrations, never `sync`.** Schema changes go through reviewed migrations; nothing drops tables on start.
+- **Authentication and authorisation wired in from the first route,** not left as unused helpers.
+- **Response schemas as well as request schemas.** Fastify can serialise and validate responses from JSON Schema, which also keeps fields like password hashes from leaking.
+- **Rate limiting in Redis or at the edge,** not with a read-then-write in PostgreSQL on every request, which races under concurrency.
+- **Secrets from a secrets manager,** with the app refusing to start when one is missing.
+- **Docker that builds once and runs anywhere:** a multi-stage build, a non-root user, a health check, and services found by name instead of fixed IPs.
+- **Tests in CI on every pull request,** with Testcontainers for PostgreSQL and Redis, and a deploy step that only runs from the main branch.
+- **Observability with OpenTelemetry,** not a vendor agent: traces, request metrics and structured logs with request IDs.
 
 ## Technologies
 
@@ -23,7 +53,7 @@
     Open CLI and run following commands to set up at local:
    - **Clone of the project**
         >
-            git clone https://github.com/uCreateit/fastify-postgres-boilerplate.git
+            git clone https://github.com/the-vishal-kumar/fastify-postgres-boilerplate.git
 
    - **Go to a project directory**
        > 
@@ -44,7 +74,7 @@
 
 # Post Installation steps
 
-**Note**: **Before runnning below please make sure to add config variables to .env file .**
+**Note**: before running the steps below, copy `.env.sample` to `.env` and fill in the values.
 
 
  - **Run database migrations**
@@ -61,5 +91,4 @@
         docker-compose run web npm start
 
 As IP is configured in ```docker-compose.yml``` file so APP will be running on 192.38.1.1:8080. 
-Open the API documentation [http://192.38.1.1:8080/api-doc](http://192.38.1.1:8080/api-doc) here.
-
+Swagger UI is served at `http://192.38.1.1:8080/documentation`.
