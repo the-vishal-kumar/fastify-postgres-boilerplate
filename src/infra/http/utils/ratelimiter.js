@@ -34,11 +34,15 @@ const createRateLimiter = ({
         });
       }
     } else {
+      // Bound parameters, not string interpolation: `key` is the client IP,
+      // which comes from X-Forwarded-For when trustProxy is on.
       db.query(
         `INSERT INTO "RateLimits"("Route", "Source", "Count", "TTL")
-        VALUES('${this.route}', '${key}', 1,
-        ${(RateLimit && RateLimit.TTL) || ttl})
-        ON CONFLICT("Route", "Source") DO UPDATE SET "Count"=1, "TTL"=${ttl}`,
+        VALUES($1, $2, 1, $3)
+        ON CONFLICT("Route", "Source") DO UPDATE SET "Count"=1, "TTL"=$4`,
+        {
+          bind: [this.route, key, (RateLimit && RateLimit.TTL) || ttl, ttl],
+        },
       )
         .then(() => {
           cb(null, {
