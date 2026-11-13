@@ -46,7 +46,7 @@ flowchart LR
 
 - **Relational guarantees for free.** Unique emails, foreign keys, check constraints and the row lock live in the database. The Express + MongoDB version needs a lease document to get the same repayment guarantee, because a standalone MongoDB has no multi-document transactions.
 - **SQL without an ORM** keeps every query visible and reviewable, at the cost of mapping rows to objects by hand. For this many tables that is cheaper than an ORM's abstractions and migrations.
-- **Zod over Fastify's JSON Schema validation.** JSON Schema would compile faster validators and could feed the OpenAPI document, but the contract's messages and numeric-string conversion fit Zod with less glue, and Zod gives handlers static types. The cost is a small translation layer for messages.
+- **Zod over Fastify's JSON Schema validation.** JSON Schema is Fastify's native validator and could feed the OpenAPI document, but the contract's messages and numeric-string conversion fit Zod with less glue, and Zod gives handlers static types. The cost is a small translation layer for messages.
 - **Single-process rate limits.** Limits are kept in memory, per process. Several replicas need a shared store such as Redis.
 - **Node.js runtime.** The image carries a Node runtime (larger than a Go binary) and sign-in is bound by scrypt on the event loop's thread pool. The [comparison](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate/blob/main/docs/comparison.md) has the measured numbers.
 
