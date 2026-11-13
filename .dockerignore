@@ -1,5 +1,13 @@
-Dockerfile
-README.md
 node_modules
-npm-debug.log
-.vscode
+build
+coverage
+.cache
+.git
+.github
+.husky
+.env
+.env.*
+*.log
+test
+.plans
+.triad

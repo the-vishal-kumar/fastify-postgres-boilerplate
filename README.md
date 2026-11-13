@@ -1,94 +1,98 @@
-> **Archived (2020).** A Fastify and PostgreSQL boilerplate from December 2020, early in my career. It is kept as a record of where I started. It is not maintained, its dependencies are out of date, and it should not be deployed as-is. For how I structure a Node.js API today, see [nodejs-typescript-rest-boilerplate](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate).
-
 # fastify-postgres-boilerplate
 
+One of three implementations of the same loan API: [Express + MongoDB](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate), **Fastify + PostgreSQL** (this repo) and [Go + PostgreSQL](https://github.com/the-vishal-kumar/go-postgres-boilerplate). They share one contract and one conformance suite, and are [measured side by side](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate/blob/main/docs/comparison.md).
 
-## Security note
+[![CI](https://github.com/the-vishal-kumar/fastify-postgres-boilerplate/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/the-vishal-kumar/fastify-postgres-boilerplate/actions/workflows/ci.yml?query=branch%3Amain)
+![Node.js](https://img.shields.io/badge/node-22-339933?logo=node.js&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Read this before copying any of the code.
+## Problem
 
-- **No authentication.** The user routes are public. `acl-authorization.js` and `with-session.js` exist but no route uses them.
-- **Development wipes the database.** With `NODE_ENV=development` the app runs `sequelize.sync({ force: true })` on start, which drops and recreates all tables.
-- **Public IP range for the Docker network.** `docker-compose.yml` uses `192.38.0.0/16`, which is public address space, not a private range. While the stack runs, traffic to real hosts in that range goes to the containers instead.
-- **Public Cloud Run service.** `cloudbuild.yaml` deploys with `--allow-unauthenticated`.
+Customers request a loan with an amount and a term in weeks. An admin approves it. The customer repays it in weekly instalments, in order, and the loan becomes `PAID` with the last one.
 
-Fixed during archiving:
+The rules are small but real:
 
-- The rate limiter built its SQL by string interpolation of the client address. A single quote in `X-Forwarded-For` broke the query, so the limiter recorded nothing and let every request through. It now uses bound parameters.
-- Seed data contained real people's work email addresses. They are replaced with `example.com` addresses.
-- The database password was hard-coded in `docker-compose.yml`. It now comes from `POSTGRES_PASSWORD`, defaulting to `postgres` for local use.
-- The GitHub Actions workflow failed on every push and targeted services this repo does not own. It is removed.
+- **Exact money.** Amounts have at most two decimals and are stored in integer cents. A schedule splits the amount into equal instalments with the remainder on the last one, so it always adds up (10000 over 3 is 3333.33, 3333.33, 3333.34).
+- **Approval rules.** Only an admin approves, never their own loan, and never twice.
+- **Ordered repayments.** A payment must cover the next instalment and may not exceed the balance; any surplus pays the following instalments.
+- **Concurrency.** Two payments racing on one loan must never apply money twice or lose it.
 
-## Known issues
+The full behaviour is the [OpenAPI contract](./contract/openapi.json) plus the [conformance suite](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate/tree/main/conformance), which this repo passes in CI.
 
-- `GET /users/getUserByEmail` validates the `email` query parameter but never passes it on, so every call returns 500.
-- The rate limit table uses `Source` alone as its primary key, so one client address can only hold a counter for one route at a time.
+## Design
 
-## What I'd do differently today
+```mermaid
+flowchart LR
+  client([Client]) -->|HTTP JSON| hooks
+  subgraph api [Fastify process]
+    hooks[onRequest hooks<br/>request id, helmet, rate limit] --> auth[preHandler<br/>Bearer token + session lookup]
+    auth --> routes[routes<br/>Zod validation]
+    routes --> store[Store<br/>all SQL, transactions]
+  end
+  store -->|pg pool| db[(PostgreSQL)]
+  migrate[[migrate<br/>one-shot]] -->|migrations/*.sql| db
+```
 
-- **Migrations, never `sync`.** Schema changes go through reviewed migrations; nothing drops tables on start.
-- **Authentication and authorisation wired in from the first route,** not left as unused helpers.
-- **Response schemas as well as request schemas.** Fastify can serialise and validate responses from JSON Schema, which also keeps fields like password hashes from leaking.
-- **Rate limiting in Redis or at the edge,** not with a read-then-write in PostgreSQL on every request, which races under concurrency.
-- **Secrets from a secrets manager,** with the app refusing to start when one is missing.
-- **Docker that builds once and runs anywhere:** a multi-stage build, a non-root user, a health check, and services found by name instead of fixed IPs.
-- **Tests in CI on every pull request,** with Testcontainers for PostgreSQL and Redis, and a deploy step that only runs from the main branch.
-- **Observability with OpenTelemetry,** not a vendor agent: traces, request metrics and structured logs with request IDs.
+- **Fastify 5** with its own JSON body parser (empty body means `{}`, 10 KiB limit), `@fastify/helmet` and `@fastify/cors`. Errors from anywhere become one envelope in a single error handler.
+- **Validation with Zod.** Each route parses params and body into typed values; Zod issues are translated into the contract's messages (`"amount" is required`).
+- **PostgreSQL with plain SQL** through `pg`, no ORM. [`src/store.ts`](./src/store.ts) holds every query. Money is `bigint` cents, statuses are enum types, and email uniqueness is a unique index on `lower(email)`.
+- **Migrations** are SQL files in [`migrations/`](./migrations), applied by a one-shot `migrate` container before the API starts. The migrator records versions in `schema_migrations` and holds an advisory lock, so replicas starting together cannot race.
+- **Repayment concurrency:** one transaction that locks the loan row (`SELECT ... FOR UPDATE`), reads the pending instalments, applies the payment and commits. A second payment waits for the lock and then sees the first one's result, so both apply in sequence. Approval uses a conditional `UPDATE ... WHERE status = 'PENDING'`.
+- **Auth:** HS256 JWTs signed with `node:crypto` (one algorithm, no `alg` negotiation). The database stores only a SHA-256 of each token, so sign-off and password reset can revoke sessions. Passwords use scrypt.
+- **Operations:** `/health/live` never touches the database, `/health/ready` pings it and fails while shutting down. SIGTERM fails readiness, drains in-flight requests, closes the pool and exits 0. Configuration comes only from the environment and is validated at start-up, with every problem reported at once.
 
-## Technologies
+## Trade-offs of this stack
 
-- Language: Node.js
-- Framework: Fastify
-- Database: PostgreSQL
+- **Relational guarantees for free.** Unique emails, foreign keys, check constraints and the row lock live in the database. The Express + MongoDB version needs a lease document to get the same repayment guarantee, because a standalone MongoDB has no multi-document transactions.
+- **SQL without an ORM** keeps every query visible and reviewable, at the cost of mapping rows to objects by hand. For this many tables that is cheaper than an ORM's abstractions and migrations.
+- **Zod over Fastify's JSON Schema validation.** JSON Schema would compile faster validators and could feed the OpenAPI document, but the contract's messages and numeric-string conversion fit Zod with less glue, and Zod gives handlers static types. The cost is a small translation layer for messages.
+- **Single-process rate limits.** Limits are kept in memory, per process. Several replicas need a shared store such as Redis.
+- **Node.js runtime.** The image carries a Node runtime (larger than a Go binary) and sign-in is bound by scrypt on the event loop's thread pool. The [comparison](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate/blob/main/docs/comparison.md) has the measured numbers.
 
-#### Basic Requirements
+## Quick start (Docker only)
 
-- Node (12.x.x)
-- PostgreSQL 12.x (We are using latest version in docker)
-- docker and docker-compose
-- Git
+```bash
+git clone https://github.com/the-vishal-kumar/fastify-postgres-boilerplate.git
+cd fastify-postgres-boilerplate
+make up        # API and PostgreSQL on http://localhost:3000, docs at /docs
+make down
+```
 
-## How to install project on local machine
-  
-    Open CLI and run following commands to set up at local:
-   - **Clone of the project**
-        >
-            git clone https://github.com/the-vishal-kumar/fastify-postgres-boilerplate.git
+Every target runs in containers; the host needs only Docker and make.
 
-   - **Go to a project directory**
-       > 
-            cd fastify-postgres-boilerplate
+| Target | What it does |
+|---|---|
+| `make lint` | Prettier check and ESLint |
+| `make typecheck` | `tsc --noEmit` |
+| `make build` | Compile to `build/` |
+| `make test` | Unit and integration tests against a throwaway PostgreSQL |
+| `make conformance` | Fresh stack plus the shared conformance suite |
+| `make image` / `make scan` | Production image; Trivy scan for fixable HIGH/CRITICAL CVEs |
+| `make bench` | The shared k6 load test (see below) |
 
-   - **Following commands executes the Dockerfile, and does some other magic**
-       >
-            docker-compose up --build
+Configuration lives in [`.env.sample`](./.env.sample); `make up` copies it to `.env` on first run.
 
-  - **Now take down the running container (we wanted to run it once for now) - in a different tab (or do ```CTRL + C``` to take these down).**
-       >
-        docker-compose down
+## Conformance suite and benchmark
 
-  - **Install the node dependencies**
-       >
-        docker-compose run web npm install
-  
+The conformance suite and the load test live in the [reference implementation](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate/tree/main/conformance), released by the `conformance-v1` tag. `make suite` fetches that tag into the git-ignored `.cache/` with a git container, so there is one copy and no vendored drift.
 
-# Post Installation steps
+- `make conformance` starts a fresh stack (with `ADMIN_SIGNUP_ENABLED=true` and `TRUST_PROXY=1`) and runs the suite with `node --test`. It also checks that `/docs/openapi.json` is the contract with only the title and description changed.
+- `make bench` runs the k6 mix (sign-in, loan request, list, get, admin approval, repayment) under the CPU and memory limits in [`compose.bench.yaml`](./compose.bench.yaml), which all three implementations share. Results go to `.cache/bench/result.json`.
 
-**Note**: before running the steps below, copy `.env.sample` to `.env` and fill in the values.
+Cases that need the database or the process are covered by this repo's own tests in [`test/integration`](./test/integration): tokens stored only as hashes, expired sessions, 500 without internals when the database fails, readiness while shutting down, admin sign-up switched off, the recorded approver and racing payments.
 
+## CI
 
- - **Run database migrations**
-    >
-        docker-compose run web node_modules/.bin/sequelize db:migrate
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml), actions pinned by commit SHA:
 
+1. Prettier, ESLint, type-check, unit and integration tests against a PostgreSQL service.
+1. Image build, compose up (migrations first), the conformance suite, a smoke test, a check that SIGTERM exits 0, and a Trivy scan.
 
- - **Run seeder**
-    >
-        docker-compose run web node_modules/.bin/sequelize db:seed:all
+## History
 
- - **Start the application**
-    >
-        docker-compose run web npm start
+This repo started in 2020 as a Fastify + Sequelize CRUD boilerplate. In 2026 it was rewritten from scratch as the PostgreSQL implementation of the loan API; the earlier commits remain in the history.
 
-As IP is configured in ```docker-compose.yml``` file so APP will be running on 192.38.1.1:8080. 
-Swagger UI is served at `http://192.38.1.1:8080/documentation`.
+## License
+
+[MIT](./LICENSE), Vishal Kumar.

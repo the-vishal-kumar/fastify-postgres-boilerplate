@@ -1,0 +1,48 @@
+# Local stack: make up (or cp .env.sample .env && docker compose up --build)
+name: fpb
+
+x-api: &api
+  build: .
+  image: fpb-api:local
+  env_file: ${ENV_FILE:-.env}
+  environment:
+    DATABASE_URL: postgres://loan:${POSTGRES_PASSWORD:-loan}@db:5432/loan
+
+services:
+  db:
+    image: postgres:18.7-alpine
+    environment:
+      POSTGRES_USER: loan
+      POSTGRES_DB: loan
+      # Local default only; set POSTGRES_PASSWORD for anything shared.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loan}
+    volumes:
+      - pg-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U loan -d loan']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # One-shot: applies migrations/*.sql, then exits. The API waits for it.
+  migrate:
+    <<: *api
+    command: ['node', 'build/src/index.js', 'migrate']
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    <<: *api
+    ports:
+      - '${PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  pg-data:

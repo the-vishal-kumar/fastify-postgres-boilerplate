@@ -1,0 +1,20 @@
+# Benchmark overrides (make bench). Every implementation of the loan API uses
+# the same limits: API 2 CPUs / 512 MiB, database 2 CPUs / 1 GiB.
+services:
+  api:
+    environment:
+      RATE_LIMIT_MAX: '1000000000'
+      AUTH_RATE_LIMIT_MAX: '1000000000'
+      LOG_LEVEL: warn
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+
+  db:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G

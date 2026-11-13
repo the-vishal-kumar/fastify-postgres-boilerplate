@@ -1,0 +1,31 @@
+# Unit and integration tests with only Docker installed: make test
+name: fpb-test
+
+services:
+  tests:
+    image: node:22.23.5-bookworm-slim
+    working_dir: /src
+    user: '${UID:-1000}:${GID:-1000}'
+    environment:
+      HOME: /tmp
+      DATABASE_URL: postgres://loan:loan@db:5432/loan_test
+    volumes:
+      - ./:/src
+    command: ['sh', '-c', 'npm ci --no-audit --no-fund --ignore-scripts && npm test']
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18.7-alpine
+    environment:
+      POSTGRES_USER: loan
+      POSTGRES_PASSWORD: loan
+      POSTGRES_DB: loan_test
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U loan -d loan_test']
+      interval: 2s
+      timeout: 5s
+      retries: 30
