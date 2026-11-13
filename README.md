@@ -75,7 +75,7 @@ Configuration lives in [`.env.sample`](./.env.sample); `make up` copies it to `.
 
 ## Conformance suite and benchmark
 
-The conformance suite and the load test live in the [reference implementation](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate/tree/main/conformance), released by the `conformance-v1` tag. `make suite` fetches that tag into the git-ignored `.cache/` with a git container, so there is one copy and no vendored drift.
+The conformance suite and the load test live in the [reference implementation](https://github.com/the-vishal-kumar/nodejs-typescript-rest-boilerplate/tree/main/conformance), released by the `conformance-v2` tag. `make suite` fetches that tag into the git-ignored `.cache/` with a git container, so there is one copy and no vendored drift.
 
 - `make conformance` starts a fresh stack (with `ADMIN_SIGNUP_ENABLED=true` and `TRUST_PROXY=1`) and runs the suite with `node --test`. It also checks that `/docs/openapi.json` is the contract with only the title and description changed.
 - `make bench` runs the k6 mix (sign-in, loan request, list, get, admin approval, repayment) under the CPU and memory limits in [`compose.bench.yaml`](./compose.bench.yaml), which all three implementations share. Results go to `.cache/bench/result.json`.
